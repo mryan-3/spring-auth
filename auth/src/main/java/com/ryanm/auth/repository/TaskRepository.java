@@ -1,5 +1,6 @@
 package com.ryanm.auth.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,7 +15,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
     List<Task> findByUserOrderByCreatedAtDesc(UserModel user);
     List<Task> findByUserAndCompleted(UserModel user, boolean completed);
     List<Task> findByUserAndPriority(UserModel user, Task.Priority priority);
-    List<Task> findByUserAndDueDate(UserModel user, String dueDate);
+    List<Task> findByUserAndDueDate(UserModel user, LocalDateTime dueDate);
     Optional<Task> findByIdAndUser(Long id, UserModel user);
     long countByUser(UserModel user);
     long countByUserAndCompleted(UserModel user, boolean completed);
