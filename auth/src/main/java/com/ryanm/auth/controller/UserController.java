@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ryanm.auth.dto.ApiResponse;
 import com.ryanm.auth.dto.LoginRequest;
+import com.ryanm.auth.dto.RefreshTokenRequest;
 import com.ryanm.auth.dto.SignupRequest;
 import com.ryanm.auth.dto.UserResponseData;
 import com.ryanm.auth.model.UserModel;
@@ -18,9 +19,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -56,7 +59,11 @@ public class UserController {
             // Save user
             UserModel savedUser = repository.save(user);
 
-            String token = jwtService.generateToken(
+            String accessToken = jwtService.generateToken(
+                savedUser.getUsername(), 
+                savedUser.getId()
+            );
+            String refreshToken = jwtService.generateRefreshToken(
                 savedUser.getUsername(), 
                 savedUser.getId()
             );
@@ -65,7 +72,8 @@ public class UserController {
             UserResponseData responseData = new UserResponseData(savedUser.getId(), 
                 savedUser.getUsername(), 
                 savedUser.getEmail(),
-                token);
+                accessToken,
+                refreshToken);
             
             // Return standardized success response
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -90,7 +98,11 @@ public class UserController {
             UserModel user = repository.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-            String token = jwtService.generateToken(
+            String accessToken = jwtService.generateToken(
+                user.getUsername(), 
+                user.getId()
+            );
+            String refreshToken = jwtService.generateRefreshToken(
                 user.getUsername(), 
                 user.getId()
             );
@@ -98,7 +110,7 @@ public class UserController {
 
             UserResponseData responseData = new UserResponseData(user.getId(), 
                 user.getUsername(), 
-                user.getEmail(), token);
+                user.getEmail(), accessToken, refreshToken);
 
             return ResponseEntity.ok(ApiResponse.success("Login successful", responseData));
         } catch (BadCredentialsException e) {
@@ -111,5 +123,80 @@ public class UserController {
         }
     }
     
-    
+    @PostMapping("/refresh-token")
+    public ResponseEntity<ApiResponse<UserResponseData>> refreshToken(@RequestBody RefreshTokenRequest request) {
+        try {
+            // Generate new access token using refresh token
+            String newAccessToken = jwtService.refreshAccessToken(request.getRefreshToken());
+            
+            // Extract user info from refresh token
+            String username = jwtService.extractUsername(request.getRefreshToken());
+            UserModel user = repository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+            // Create response (keep the same refresh token)
+            UserResponseData userData = new UserResponseData(
+                user.getId(), 
+                user.getUsername(), 
+                user.getEmail(),
+                newAccessToken,
+                request.getRefreshToken()
+            );
+            
+
+            return ResponseEntity.ok(ApiResponse.success("Token refreshed successfully", userData));
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Token refresh failed: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<ApiResponse<UserResponseData>> getProfile() {
+        try {
+            // Step 1: Get authentication from Security Context
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            
+            // Step 2: Check if authentication exists (should not be null if JWT filter worked)
+            if (authentication == null || !authentication.isAuthenticated()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("User not authenticated"));
+            }
+            
+            // Step 3: Extract username from authentication
+            String username = authentication.getName();
+            
+            // Step 4: Check if username is valid
+            if (username == null || username.trim().isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Invalid authentication data"));
+            }
+            
+            // Step 5: Find user in database (this can throw exception)
+            UserModel user = repository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User account not found. Account may have been deleted."));
+
+            // Step 6: Create response data (don't include tokens in profile response)
+            UserResponseData userData = new UserResponseData(
+                user.getId(), 
+                user.getUsername(), 
+                user.getEmail(),
+                null,  // No need to return tokens in profile
+                null   // No need to return tokens in profile
+            );
+
+            return ResponseEntity.ok(ApiResponse.success("Profile retrieved successfully", userData));
+            
+        } catch (RuntimeException e) {
+            // Handle specific business logic errors (like user not found)
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("Profile not found: " + e.getMessage()));
+                
+        } catch (Exception e) {
+            // Handle unexpected errors (database issues, etc.)
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("Failed to retrieve profile: " + e.getMessage()));
+        }
+    }
 }

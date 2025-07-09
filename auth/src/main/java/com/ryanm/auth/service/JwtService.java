@@ -2,8 +2,9 @@ package com.ryanm.auth.service;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -14,10 +15,15 @@ import java.util.function.Function;
 
 @Service
 public class JwtService {
+
+    @Value("${jwt.secret}")
+    private String secretKey;
+
+    @Value("${jwt.expiration}")
+    private long jwtExpiration;
     
-    // Secret key for signing tokens (in production, use environment variable)
-    private static final String SECRET_KEY = "mySecretKeyForJWTTokenGenerationThatIsLongEnough123456789";
-    private static final long JWT_EXPIRATION = 86400000; // 24 hours in milliseconds
+    @Value("${jwt.refresh-token.expiration}")
+    private long refreshExpiration;
     
     // Generate token for a user
     public String generateToken(String username, Long userId) {
@@ -32,14 +38,14 @@ public class JwtService {
         .claims(claims)
         .subject(subject)
         .issuedAt(new Date(System.currentTimeMillis()))
-        .expiration(new Date(System.currentTimeMillis() + JWT_EXPIRATION))
+        .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
         .signWith(getSigningKey())
                 .compact();
     }
     
     // Get the secret key for signing
     private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
+        return Keys.hmacShaKeyFor(secretKey.getBytes());
     }
     
     // Extract username from token
@@ -82,4 +88,50 @@ public class JwtService {
         final String extractedUsername = extractUsername(token);
         return (extractedUsername.equals(username) && !isTokenExpired(token));
     }
+
+    // Generate refresh token
+    public String generateRefreshToken(String username, Long userId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("tokenType", "refresh"); // Mark as refresh token
+        return createRefreshToken(claims, username);
+    }
+
+    private String createRefreshToken(Map<String, Object> claims, String subject) {
+        return Jwts.builder()
+                .claims(claims)
+                .subject(subject)
+                .issuedAt(new Date(System.currentTimeMillis()))
+                .expiration(new Date(System.currentTimeMillis() + refreshExpiration))  // 👈 7 days
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    public Boolean isRefreshToken(String token) {
+        try {
+            String tokenType = extractClaim(token, claims -> claims.get("tokenType", String.class));
+            return "refresh".equals(tokenType);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // 👈 NEW: Refresh access token using refresh token
+    public String refreshAccessToken(String refreshToken) {
+        if (!isRefreshToken(refreshToken)) {
+            throw new RuntimeException("Invalid refresh token");
+        }
+        
+        String username = extractUsername(refreshToken);
+        Long userId = extractUserId(refreshToken);
+        
+        if (isTokenExpired(refreshToken)) {
+            throw new RuntimeException("Refresh token expired");
+        }
+        
+        // Generate new access token
+        return generateToken(username, userId);
+    }
+
+
 }
