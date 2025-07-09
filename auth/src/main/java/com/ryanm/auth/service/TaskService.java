@@ -2,11 +2,18 @@ package com.ryanm.auth.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import com.ryanm.auth.dto.tasks.TaskFilterRequest;
+import com.ryanm.auth.dto.tasks.TaskPageResponse;
 import com.ryanm.auth.dto.tasks.TaskRequest;
 import com.ryanm.auth.dto.tasks.TaskResponse;
 import com.ryanm.auth.model.Task;
@@ -129,5 +136,63 @@ public class TaskService {
             .orElseThrow(() -> new RuntimeException("Task not found or access denied"));
         
         taskRepository.delete(task);
+    }
+
+    public TaskPageResponse getTasksWithFilters(TaskFilterRequest req) {
+        UserModel user = getCurrentUser();
+         Pageable pageable = createPageable(req);
+        
+        LocalDateTime dueBefore = parseDateTime(req.getDueBefore());
+        LocalDateTime dueAfter = parseDateTime(req.getDueAfter());
+        
+        Page<Task> taskPage = taskRepository.findTasksWithFilters(
+            user,
+            req.getTitle(),
+            req.getDescription(),
+            req.getCompleted(),
+            req.getPriority(),
+            dueBefore,
+            dueAfter,
+            pageable
+        );
+
+        List<TaskResponse> taskResponses = taskPage.getContent().stream()
+            .map(this::convertToResponse)
+            .collect(Collectors.toList());
+
+            return new TaskPageResponse(
+                taskResponses,
+            taskPage.getNumber(),           // Current page
+            taskPage.getSize(),             // Page size
+            taskPage.getTotalElements(),    // Total items
+            taskPage.getTotalPages(),       // Total pages
+            taskPage.isFirst(),             // Is first page?
+            taskPage.isLast()  
+            );
+    }
+
+
+
+    private Pageable createPageable(TaskFilterRequest filterRequest) {
+        Sort sort = Sort.by(
+            Sort.Direction.fromString(filterRequest.getSortDirection()),
+            filterRequest.getSortBy()
+        );
+        
+        return PageRequest.of(
+            filterRequest.getPage(), 
+            filterRequest.getSize(), 
+            sort
+        );
+    }
+    private LocalDateTime parseDateTime(String dateString) {
+        if (dateString == null || dateString.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(dateString);
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid date format: " + dateString + ". Use ISO format: 2024-07-15T18:00:00");
+        }
     }
 }
