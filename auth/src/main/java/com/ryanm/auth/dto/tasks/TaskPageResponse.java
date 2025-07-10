@@ -13,6 +13,4 @@ public class TaskPageResponse {
     private int pageSize;                // Number of items per page
     private long totalElements;          // Total number of tasks
     private int totalPages;              // Total number of pages
-    private boolean first;               // Is this the first page?
-    private boolean last;                // Is this the last page?
 }

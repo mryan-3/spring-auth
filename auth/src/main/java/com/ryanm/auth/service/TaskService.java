@@ -165,9 +165,7 @@ public class TaskService {
             taskPage.getNumber(),           // Current page
             taskPage.getSize(),             // Page size
             taskPage.getTotalElements(),    // Total items
-            taskPage.getTotalPages(),       // Total pages
-            taskPage.isFirst(),             // Is first page?
-            taskPage.isLast()  
+            taskPage.getTotalPages()
             );
     }
 

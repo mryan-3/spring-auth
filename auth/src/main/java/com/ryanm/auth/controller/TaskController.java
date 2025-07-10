@@ -4,8 +4,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ryanm.auth.dto.ApiResponse;
+import com.ryanm.auth.dto.tasks.TaskFilterRequest;
+import com.ryanm.auth.dto.tasks.TaskPageResponse;
 import com.ryanm.auth.dto.tasks.TaskRequest;
 import com.ryanm.auth.dto.tasks.TaskResponse;
+import com.ryanm.auth.model.Task.Priority;
 import com.ryanm.auth.service.TaskService;
 
 import lombok.RequiredArgsConstructor;
@@ -21,6 +24,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+
 
 
 
@@ -109,5 +114,42 @@ public class TaskController {
                 .body(ApiResponse.error("Failed to delete task: " + e.getMessage()));
         }
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<TaskPageResponse>> searchTasks(
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) Boolean completed,
+            @RequestParam(required = false) Priority priority,
+            @RequestParam(required = false) String dueBefore,
+            @RequestParam(required = false) String dueAfter,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDirection) {
+        
+        try {
+            TaskFilterRequest filterRequest = new TaskFilterRequest();
+            filterRequest.setTitle(title);
+            filterRequest.setDescription(description);
+            filterRequest.setCompleted(completed);
+            filterRequest.setPriority(priority);
+            filterRequest.setDueBefore(dueBefore);
+            filterRequest.setDueAfter(dueAfter);
+            filterRequest.setPage(page);
+            filterRequest.setSize(size);
+            filterRequest.setSortBy(sortBy);
+            filterRequest.setSortDirection(sortDirection);
+            
+            TaskPageResponse result = taskService.getTasksWithFilters(filterRequest);
+            
+            return ResponseEntity.ok(ApiResponse.success("Tasks retrieved successfully", result));
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Search failed: " + e.getMessage()));
+        }
+    }
+    
 
 }

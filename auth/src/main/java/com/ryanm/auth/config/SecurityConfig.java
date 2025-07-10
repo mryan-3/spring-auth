@@ -56,7 +56,9 @@ public  class SecurityConfig {
     @Bean 
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf
+                        .ignoringRequestMatchers("/h2-console/**")
+                        .disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers( "/api/users/signup", "/api/users/login",  "/api/users/refresh-token",  // 👈 Add refresh endpoint
                     "/h2-console/**").permitAll()
