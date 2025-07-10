@@ -61,7 +61,7 @@ public  class SecurityConfig {
                         .disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers( "/api/users/signup", "/api/users/login",  "/api/users/refresh-token",  // 👈 Add refresh endpoint
-                    "/h2-console/**").permitAll()
+                    "/h2-console/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

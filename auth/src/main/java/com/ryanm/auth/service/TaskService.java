@@ -16,10 +16,13 @@ import com.ryanm.auth.dto.tasks.TaskFilterRequest;
 import com.ryanm.auth.dto.tasks.TaskPageResponse;
 import com.ryanm.auth.dto.tasks.TaskRequest;
 import com.ryanm.auth.dto.tasks.TaskResponse;
+import com.ryanm.auth.dto.tasks.TaskShareRequest;
 import com.ryanm.auth.model.Task;
 import com.ryanm.auth.model.UserModel;
 import com.ryanm.auth.model.Task.Priority;
+import com.ryanm.auth.model.TaskShare;
 import com.ryanm.auth.repository.TaskRepository;
+import com.ryanm.auth.repository.TaskShareRepository;
 import com.ryanm.auth.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -29,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 public class TaskService {
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
+    private final TaskShareRepository taskShareRepository;
 
     private UserModel getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -192,5 +196,37 @@ public class TaskService {
         } catch (Exception e) {
             throw new RuntimeException("Invalid date format: " + dateString + ". Use ISO format: 2024-07-15T18:00:00");
         }
+    }
+
+    public TaskShare shareTask(TaskShareRequest request) {
+        UserModel currentUser = getCurrentUser();
+        UserModel targetUser = userRepository.findByUsername(request.getUsername())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Task task = taskRepository.findByIdAndUser(request.getTaskId(), currentUser)
+            .orElseThrow(() -> new RuntimeException("Task not found or access denied"));
+
+        // Check if already shared
+        if (task.isSharedWith(targetUser)) {
+            throw new RuntimeException("Task already shared with this user");
+        }
+
+        TaskShare share = new TaskShare();
+        share.setTask(task);
+        share.setSharedWith(targetUser);
+        share.setPermission(request.getPermission());
+
+        return taskShareRepository.save(share);
+    }
+
+    public void removeShare(Long taskId, String username) {
+        UserModel currentUser = getCurrentUser();
+        UserModel targetUser = userRepository.findByUsername(username)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+        taskRepository.findByIdAndUser(taskId, currentUser)
+            .orElseThrow(() -> new RuntimeException("Task not found or access denied"));
+
+        taskShareRepository.deleteByTaskIdAndSharedWith(taskId, targetUser);
     }
 }
