@@ -18,9 +18,10 @@ import com.ryanm.auth.dto.tasks.TaskRequest;
 import com.ryanm.auth.dto.tasks.TaskResponse;
 import com.ryanm.auth.dto.tasks.TaskShareRequest;
 import com.ryanm.auth.model.Task;
+import com.ryanm.auth.model.TaskShare;
 import com.ryanm.auth.model.UserModel;
 import com.ryanm.auth.model.Task.Priority;
-import com.ryanm.auth.model.TaskShare;
+import com.ryanm.auth.model.TaskShare.SharePermission;
 import com.ryanm.auth.repository.TaskRepository;
 import com.ryanm.auth.repository.TaskShareRepository;
 import com.ryanm.auth.repository.UserRepository;
@@ -198,26 +199,29 @@ public class TaskService {
         }
     }
 
-    public TaskShare shareTask(TaskShareRequest request) {
+   public TaskShare shareTask(Long taskId, String username, SharePermission permission) {
         UserModel currentUser = getCurrentUser();
-        UserModel targetUser = userRepository.findByUsername(request.getUsername())
+        UserModel targetUser = userRepository.findByUsername(username)
             .orElseThrow(() -> new RuntimeException("User not found"));
 
-        Task task = taskRepository.findByIdAndUser(request.getTaskId(), currentUser)
+        Task task = taskRepository.findByIdAndUser(taskId, currentUser)
             .orElseThrow(() -> new RuntimeException("Task not found or access denied"));
 
-        // Check if already shared
-        if (task.isSharedWith(targetUser)) {
-            throw new RuntimeException("Task already shared with this user");
+        // Make task shareable if not already
+        if (!task.getIsShareable()) {
+            task.setIsShareable(true);
+            taskRepository.save(task);
         }
+        // Create it in the TaskShareRepository
 
         TaskShare share = new TaskShare();
         share.setTask(task);
         share.setSharedWith(targetUser);
-        share.setPermission(request.getPermission());
+        share.setPermission(permission);
+        taskShareRepository.save(share);
 
-        return taskShareRepository.save(share);
-    }
+        return share;
+   }
 
     public void removeShare(Long taskId, String username) {
         UserModel currentUser = getCurrentUser();
@@ -228,5 +232,64 @@ public class TaskService {
             .orElseThrow(() -> new RuntimeException("Task not found or access denied"));
 
         taskShareRepository.deleteByTaskIdAndSharedWith(taskId, targetUser);
+    }
+
+    public List<TaskResponse> getSharedTasks() {
+        UserModel user = getCurrentUser();
+        
+        List<TaskShare> shares = taskShareRepository.findBySharedWith(user);
+        // Check if user has any shared tasks
+        if (shares.isEmpty()) {
+            return List.of(); // Return empty list if no shared tasks
+
+        }
+        
+        return shares.stream()
+            .map(share -> convertToResponse(share.getTask()))
+            .collect(Collectors.toList());
+    }
+
+    public TaskResponse editTask(Long taskId, TaskRequest request) {
+        UserModel user = getCurrentUser();
+        
+        Task task = taskRepository.findByIdAndUser(taskId, user)
+            .orElseThrow(() -> new RuntimeException("Task not found or access denied"));
+
+        // Validate edit access
+        if (!hasEditAccess(task, user)) {
+            throw new RuntimeException("Access denied: You don't have permission to edit this task");
+        }
+
+        // Update fields
+        task.setTitle(request.getTitle());
+        task.setDescription(request.getDescription());
+        task.setPriority(request.getPriority() != null ? request.getPriority() : task.getPriority());
+
+        // Update due date if provided
+        if (request.getDueDate() != null && !request.getDueDate().isEmpty()) {
+            try {
+                LocalDateTime dueDate = LocalDateTime.parse(request.getDueDate());
+                task.setDueDate(dueDate);
+            } catch (Exception e) {
+                throw new RuntimeException("Invalid due date format. Please use ISO-8601 format (e.g., 2023-10-01T10:15:30)");
+            }
+        }
+
+        Task savedTask = taskRepository.save(task);
+        return convertToResponse(savedTask);
+    }
+
+    private boolean hasEditAccess(Task task, UserModel user) {
+        // Owner has edit access
+        if (task.getUser().equals(user)) {
+            return true;
+        }
+
+        // Check if user has EDIT or MANAGE permission
+        return task.getShares().stream()
+            .filter(share -> share.getSharedWith().equals(user))
+            .anyMatch(share -> 
+                share.getPermission() == SharePermission.EDIT || 
+                share.getPermission() == SharePermission.MANAGE);
     }
 }

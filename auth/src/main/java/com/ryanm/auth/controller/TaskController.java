@@ -9,6 +9,7 @@ import com.ryanm.auth.dto.tasks.TaskPageResponse;
 import com.ryanm.auth.dto.tasks.TaskRequest;
 import com.ryanm.auth.dto.tasks.TaskResponse;
 import com.ryanm.auth.model.Task.Priority;
+import com.ryanm.auth.model.TaskShare.SharePermission;
 import com.ryanm.auth.service.TaskService;
 
 import lombok.RequiredArgsConstructor;
@@ -151,5 +152,52 @@ public class TaskController {
         }
     }
     
+    // Share a task
+    @PostMapping("/{taskId}/share")
+    public ResponseEntity<ApiResponse<?>> shareTask( 
+            @PathVariable Long taskId, 
+            @RequestParam String username, 
+            @RequestParam SharePermission permission) {
+        try {
+            taskService.shareTask(taskId, username, permission);
+            return ResponseEntity.ok(
+                ApiResponse.success("Task shared successfully", 
+                    null)
+            );
+        }catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("Failed to share task: " + e.getMessage()));
+            }
+    }
 
+    // View tasks that have been shared with the user
+    @GetMapping("/shared")
+    public ResponseEntity<ApiResponse<List<TaskResponse>>> getSharedTasks() {
+        try {
+            return ResponseEntity.ok(
+                ApiResponse.success("Shared tasks retrieved successfully", 
+                    taskService.getSharedTasks())
+            );
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("Failed to retrieve shared tasks: " + e.getMessage()));
+        }
+    }
+
+    // Edit shared task
+    @PutMapping("/{taskId}/edit-share")
+    public ResponseEntity<ApiResponse<TaskResponse>> editSharedTask(
+            @PathVariable Long taskId, 
+            @RequestBody TaskRequest request) {
+                try {
+                    taskService.editTask(taskId, request);
+                    return ResponseEntity.ok(
+                        ApiResponse.success("Shared task edited successfully", 
+                            taskService.getTaskById(taskId))
+                    );
+                } catch (Exception e) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(ApiResponse.error("Failed to edit shared task: " + e.getMessage()));
+                }
+        }
 }
